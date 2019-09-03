@@ -1,0 +1,876 @@
+######################################################################
+#       Bitmap Display Settings:                                     #
+#	Unit Width: 16						     #
+#	Unit Height: 16						     #
+#	Display Width: 512					     #
+#	Display Height: 512					     #
+#	Base Address for Display: 0x10008000 ($gp)		     #
+######################################################################
+.data
+stageWidth:		.half 32			# Store stage size
+stageHeight:		.half 32			# Store stage size
+
+gallinaX:		.half 0				# Posicion X en memoria del JUGADOR
+gallinaY:		.half 14			# Posicion Y en memoria del JUGADOR
+
+gallinaColor:		.word 0x32FFFFFF		# Color para dibujar Gallina (Blanco)
+fondoColor:		.word 0xFF003500		# Color para dibujar Fondo   (Verde-oscuro)
+calleColor:		.word 0x00000000		# Color para dibujar Paredes (Negro)					
+							
+aguaColor:		.word 0x0066cc			# Color para dibujar Agua    (Azul)	
+carroColor:		.word 0x6e7f80			# Color para dibujar Carro   (Gris)
+arbolColor:		.word 0x0022cc22		# Color para dibujar Arboles (Verde-claro )
+
+score:			.word 0				# Score 
+nivelMensaje:		.asciiz ":::NIVEL:::\n"
+lostMensaje:		.ascii ":::GAME OVER:::\n " 
+			.asciiz "Tu Puntuación fue: "
+lifeMensaje:		.asciiz ":: VIDAS ::\n"
+
+#Registros usados
+	# $s0 : Coordenadas (x,y) Gallina
+	# $s1 : Puntuacion (word)
+	# $s2 : Dirreciones Teclado
+	# $s3 : Retroceder (int)
+	# $s4 : Color Gallina
+	# $s5 : Color Huella  
+	# $s6 : Color Calles
+	# $s7 : Color BackGround
+	
+	# $t1: Coordenadas (x,y) Carro1
+	# $t2: Coordenadas (x,y) Carro2
+	# $t3: Coordenadas (x,y) Carro3 
+	# $t4: Coordenadas (x,y) Carro4
+	# $t5: Variable (CoordenadasX, Acumulador, Contandor)
+	# $t6 : Velocidad
+	# $t7 : Color Agua
+	# $t8 : Color Autos
+	# $t9 : Color Arboles
+	
+	# $k0: Nivel de dificultad
+	# $k1: Vidas del jugador
+.text
+main: 
+	# Cargar Inf. Colores
+	lw $s1, score
+	lw $s4, gallinaColor
+	lw $s5, fondoColor
+	lw $s6, calleColor
+	lw $s7, fondoColor  
+	lw $t7, aguaColor
+	lw $t8, carroColor
+	lw $t9, arbolColor
+	li $k0, 0
+	li $k1, 3
+
+Main_LevelLoop:
+# Nivel Actual
+#add $k0, $k0, 1 # Subir 1 nivel
+li $k0, 9	 # Cargar nivel		
+	# Cargar Direcciones de Stage memory
+	move $a1, $gp 			# Direccion inicial
+	li $a2, 0x1000ffff 		# Direccion maxima
+		
+	# Preparar la arena
+	or $a0,$zero ,$s7
+	jal Rellenar_fondo
+	nop
+											
+	# Preparar Punto WIN
+	li $a0, 30
+	li $a1, 12	
+	jal CoordsToAddress		# Calcular posicion en el stage de memoria
+	nop
+				
+	# Inicializar Punto WIN
+	ori $a0, $zero, 0x8E2494	# Cargar Color del Player	
+	move $a1, $v0			# Cargar posicion
+	jal PaintMemory			# Llamar a la funcion pintar
+	nop		
+					
+											
+	# Preparar Jugador
+	lh $a0, gallinaX
+	lh $a1, gallinaY
+	jal CoordsToAddress		# Calcular posicion en el stage de memoria
+	nop
+	move $s0, $v0
+				
+	# Inicializar posicion del Player
+	or $a0, $zero, $s4		# Cargar Color del Player	
+	or $a1, $zero, $s0		# Cargar posicion
+	jal PaintMemory			# Llamar a la funcion pintar
+	nop		
+			
+	# Preparar carro1
+	li $a0, 8
+	li $a1, 0
+	jal CoordsToAddress		# Calcular posicion en el stage de memoria
+	nop
+	move $t1, $v0	
+	li $a2, 9		# CALLE
+	jal Pintar_Calle
+		
+	# Preparar carro2
+	li $a0, 10
+	li $a1, 31
+	jal CoordsToAddress		# Calcular posicion en el stage de memoria
+	nop
+	move $t2, $v0	
+	
+	# Preparar carro3
+	li $a0, 20
+	li $a1, 0
+	jal CoordsToAddress		# Calcular posicion en el stage de memoria
+	nop
+	move $t3, $v0	
+	li $a2, 21		# CALLE
+	jal Pintar_Calle
+	
+	# Preparar carro4
+	li $a0, 22
+	li $a1, 31
+	jal CoordsToAddress		# Calcular posicion en el stage de memoria
+	nop
+	move $t4, $v0	
+	
+	# Inicializar posicion de los carros
+	or $a0, $zero, $t8		# Cargar Color de los Carros	
+	or $a1, $zero, $t1		# Cargar posicion carro1
+	jal PaintMemory			# Llamar a la funcion pintar
+	nop
+	or $a1, $zero, $t2		# Cargar posicion carro2
+	jal PaintMemory			# Llamar a la funcion pintar
+	nop		
+	or $a1, $zero, $t3		# Cargar posicion carro3
+	jal PaintMemory			# Llamar a la funcion pintar
+	nop		
+	or $a1, $zero, $t4		# Cargar posicion carro4
+	jal PaintMemory			# Llamar a la funcion pintar
+	nop		
+#NIVEL :1 - 10
+Level:
+	# Mostrar nivel
+	li $v0, 56 		#syscall valor para dialogo
+	la $a0, nivelMensaje 	#get mensaje
+	or $a1, $zero, $k0	#get score
+	syscall
+	# Inicializaciones
+	bge $k0, 10, LevelMAX	
+	lw $s5, fondoColor	# Inicializar huella
+	li $s3, 0		# Inicializar retroceso
+	# Obstaculos (LAGOS)
+	or $a2, $zero, $t7
+	or $t5, $zero, $k0
+	mul $t5, $t5, 3		# MAX = 30
+	jal Obstaculos				
+	nop	
+	# Obstaculos (ARBOLES)
+	or $a2, $zero, $t9
+	or $t5, $zero, $k0
+	mul $t5, $t5, 2		# MAX = 20
+	jal Obstaculos				
+	nop
+	# Obstaculos (COINS)
+	ori $a2, $zero, 0xD5FF3C
+	li $t5, 5		# MAX = 5
+	jal Obstaculos				
+	nop
+	# Velocidad
+	li $t6, 160		# MAX = 16 pixel/microseg
+	div $t6, $t6, $k0
+	jal Main_waitKey
+	nop
+	
+#NIVEL MAX:10
+LevelMAX:
+	li $k1, 1
+	bne $k0, 11, Main_exit	
+	nop
+		
+Main_waitKey:		
+			# Wait for the player to press a key
+			j Main_noKey			#Not press a key
+Main_gameLoop:				
+			lw $t0, 0xFFFF0000		# Retrieve transmitter control ready bit
+			blez $t0, Main_waitKey		# Check if a key was pressed
+			nop			
+			# Now it's time to move the player
+			jal GetDir			# Get direction from keyboard
+			nop			
+			or $s2, $zero, $v0		# Backup direction from keyboard
+			or $a0, $zero, $s0		# Load possition
+			ori $a1, $zero, 1		# Set distance to move
+
+# Switch to move Player memory address in the correct direction
+Main_Right:
+			bne, $s2, 0x01000000, Main_Up
+			nop
+			add $s1,$s1, 5			# Asignar 5Pts
+			beq $s3, 0, moveR		# equilibra retroceso
+				sub $s3, $s3, 1		# - retroceso
+				nop
+			moveR:	
+			jal MoveRight			# Right
+			nop
+			j Main_DonePlayer
+			nop
+Main_Up:
+			bne, $s2, 0x02000000, Main_Left
+			nop
+			jal MoveUp			# Up
+			nop
+			j Main_DonePlayer
+			nop
+Main_Left:
+			bne, $s2, 0x03000000, Main_Down
+			nop
+			sub $s1, $s1, 5		 	# Designar 5Pts
+			add $s3, $s3, 1			# + Retroceder
+			jal MoveLeft			# Left
+			nop
+			j Main_DonePlayer
+			nop 
+Main_Down:
+			bne, $s2, 0x04000000, Main_noKey
+			nop
+			jal MoveDown			# Down
+			nop
+			j Main_DonePlayer
+			nop
+			
+Main_DonePlayer:	
+# Pintar posicion de Huella
+		or $a0, $zero, $s5 	# Color de huella
+		or $a1, $zero, $s0	# Posicion previa del Jugador
+		jal PaintMemory	
+	
+# (swith) Verificar movimiento del jugador
+	or $s0, $zero, $v0	
+	lw $s5, ($v0) 			# Actualizar color de Huella
+	nop	
+	
+	Win:	# Ganar Nivel
+	bne $s5, 0x8E2494, Coins
+		j Main_LevelLoop
+		nop
+	Coins:	# Obtener pts por dinero
+	bne $s5, 0xD5FF3C, Cruzar_calle
+		addi $s1, $s1, 10
+		lw $s5, fondoColor
+		j Main_Move_Player
+		nop			
+	Cruzar_calle: # Dar pts al cruzar calle
+	bne $s5, $s6, Arbol 
+		add $s1, $s1, 50	# Asignar 5Pts # derecha + izquierda -
+		j Main_Move_Player
+		nop
+	Arbol:	# No mover si hay arbol
+	bne $s5,  $t9, Agua
+	bne, $s2, 0x03000000, iArbol	# Izquierda no move
+		sub $s3, $s3, 1
+		nop
+	  iArbol:or $s0, $zero, $a1	# Actualizar huella anterior
+		lw $s5, ($a1)
+		j Main_Move_Player
+		nop
+	Agua:	# Morir si se mete al agua
+	bne $s5,  $t7, Retroceso
+		ori $a0, $zero, 0xff033e
+		or $a1, $zero, $s0
+		jal PaintMemory
+		nop
+		j Main_exit
+		nop
+	Retroceso:# Morir si retrocede 3 veces
+	bne $s3, 3, car1	
+		j Main_exit
+		nop
+	car1: # Morir choque carro1
+	bne $s0, $t1, car2
+		ori $a0, $zero,0xff033e
+		or $a1, $zero, $s0
+		jal PaintMemory		
+		nop
+		j Main_exit 
+		nop
+	car2:# Morir choque carro2
+	bne $s0, $t2, car3
+		ori $a0, $zero,0xff033e
+		or $a1, $zero, $s0
+		jal PaintMemory		
+		nop
+		j Main_exit 
+		nop
+	car3:# Morir choque carro3
+	bne $s0, $t3, car4
+		ori $a0, $zero,0xff033e
+		or $a1, $zero, $s0
+		jal PaintMemory		
+		nop
+		j Main_exit 
+		nop		
+	car4:# Morir choque carro4
+	bne $s0, $t4, paredes
+		ori $a0, $zero,0xff033e
+		or $a1, $zero, $s0
+		jal PaintMemory		
+		nop
+		j Main_exit 
+		nop		
+	paredes:# Validar bordes del juego	
+	or $a2, $zero, $a1		# Posicion Previa
+	or $a3, $zero, $s0		# Posicion actual
+		jal Validacion_Borde
+		nop
+		jal Validacion_BordeXS
+		nop
+		jal Validacion_BordeXI
+		nop
+	
+Main_Move_Player:
+# Pintar posicion del Jugador
+		or $a0, $zero, $s4	# Color del jugador	
+		or $a1, $zero, $s0	# Posicion actual del jugador 
+		jal PaintMemory
+		nop
+		
+# No se mueve el jugador
+Main_noKey:
+		jal Sleep
+	# Mover Carro1
+		or $a0, $zero, $t1	# Cargar posicion
+		li $t5, 8		# Posicion X del carro1
+		jal Move_Downcar	# Calcular movimiento del Carro1
+		nop 
+	# Pintar posicion de Huella
+		or $a0, $zero, $s6 	# Color de huella
+		or $a1, $zero, $t1	# Posicion previa del carro1
+		jal PaintMemory		
+		or $t1, $zero, $v0	# Actualizar posicion del carro1
+		
+	# Mover Carro2
+		or $a0, $zero, $t2	# Cargar posicion
+		li $t5, 10		# Posicion X del carro2
+		jal Move_Upcar	# Calcular movimiento del Carro2
+		nop
+	# Pintar posicion de Huella
+		or $a0, $zero, $s6 	# Color de huella
+		or $a1, $zero, $t2	# Posicion previa del carro2
+		jal PaintMemory		
+		or $t2, $zero, $v0	# Actualizar posicion del carro2																																																		
+
+	# Mover Carro3
+		or $a0, $zero, $t3	# Cargar posicion
+		li $t5, 20		# Posicion X del carro3
+		jal Move_Downcar	# Calcular movimiento del Carro3
+		nop
+	# Pintar posicion de Huella
+		or $a0, $zero, $s6 	# Color de huella
+		or $a1, $zero, $t3	# Posicion previa del carro3
+		jal PaintMemory		
+		or $t3, $zero, $v0	# Actualizar posicion del carro3
+			
+	# Mover Carro4
+		or $a0, $zero, $t4	# Cargar posicion
+		li $t5, 22		# Posicion X del carro3
+		jal Move_Upcar	# Calcular movimiento del Carro4
+		nop
+	# Pintar posicion de Huella
+		or $a0, $zero, $s6 	# Color de huella
+		or $a1, $zero, $t4	# Posicion previa del carro4
+		jal PaintMemory		
+		or $t4, $zero, $v0	# Actualizar posicion del carro4
+						
+# Mover los carros
+Main_Move_Car:	
+# Pintar posicion del carro
+		or $a0, $zero, $t8	# Color del carro	
+		or $a1, $zero, $t1	# Posicion actual del carro1
+		jal PaintMemory	
+		nop
+		or $a1, $zero, $t2	# Posicion actual del carro2
+		jal PaintMemory	
+		nop
+		or $a1, $zero, $t3	# Posicion actual del carro3
+		jal PaintMemory	
+		nop
+		or $a1, $zero, $t4	# Posicion actual del carro4
+		jal PaintMemory	
+		nop
+# Choques
+Main_DoneCar:
+	Choque1:
+		bne $s0, $t1, Choque2
+		ori $a0, $zero,0xff033e
+		or $a1, $zero, $t1 
+		jal PaintMemory		
+		nop
+		j Main_exit 
+		nop																																																				
+	Choque2:
+		bne $s0, $t2, Choque3
+		ori $a0, $zero, 0xff033e 
+		or $a1, $zero, $t2 
+		jal PaintMemory		
+		nop
+		j Main_exit 
+		nop		
+	Choque3:
+		bne $s0, $t3, Choque4
+		ori $a0, $zero, 0xff033e 
+		or $a1, $zero, $t3 
+		jal PaintMemory		
+		nop
+		j Main_exit 
+		nop																																																				
+	Choque4:
+		bne $s0, $t4, No_Choque
+		ori $a0, $zero, 0xff033e 
+		or $a1, $zero, $t4
+		jal PaintMemory		
+		nop
+		j Main_exit 
+		nop
+No_Choque:
+			# Loop around again to continue the game
+			b Main_gameLoop			
+			nop
+# Se acabo.....
+Main_exit:
+	# Aun hay vidas
+	beq $k1, 1, No_Vidas
+		sub $k0, $k0, 1		# No aumentar nivel
+		sub $k1, $k1, 1 	# Perder 1 vida
+		nop
+		li $v0, 56 		#syscall valor para dialogo
+		la $a0, lifeMensaje 	#get mensaje
+		or $a1, $zero, $k1	#get score
+		syscall
+		j Main_LevelLoop 	# Cargar otra vez nivel
+		nop
+No_Vidas:	
+	# You dead, Game over
+		li $v0, 56 		#syscall valor para dialogo
+		la $a0, lostMensaje 	#get mensaje
+		or $a1, $zero, $s1	#get score
+		syscall
+
+		li $v0,10		# Syscall cerrar
+		syscall		# exit
+###########################################################################################
+# Funcion que calcula un numero aleatorio entre 4 a 30
+#Returns: v0 = Numero
+Random:
+		li $a0, 4			# Rango inicial
+		li $a1, 30			# Rango final
+		li $v0, 42 			# random
+		syscall
+		nop
+		or $v0, $zero, $a0
+		jr $ra				# Return v0
+		nop
+###########################################################################################
+# Funcion que relentiza el bucle del juego
+# No parametros
+#Returns nada
+Sleep:
+		ori $v0, $zero, 32		# Syscall sleep
+		or $a0, $zero, $t6		# por esta cantidad de miliseconds
+		syscall
+		jr $ra				# Return
+		nop	
+############################################################################################ 
+# Funcion para dibujar un espacio de memoria (gp)
+# Parametros: a0 = color, a1 = direccion
+#Returns nada
+PaintMemory:
+		sw $a0, ($a1)			# Set color
+		jr $ra				# Return
+		nop
+###########################################################################################
+# Funcion para dibujar fondo de pantalla
+# Parametros: a0 = color, a1 = direccion
+#Returns nada
+Rellenar_fondo:
+		sw $a0, ($a1)		# Rellena direccion a1 con el contenido de a0
+		add $a1, $a1, 4
+		blt $a1, $a2, Rellenar_fondo 
+		nop
+		jr $ra				# Return 
+		nop	
+
+###########################################################################################
+# Funcion para dibujar obstaculos en pantalla (Lagos y Arboles)
+# Parametros: a2= Color,  t5= Cantidad
+#Returns: nada
+Obstaculos:
+	or $v1, $zero, $ra		# Guardar Origen de llamada
+Other_Obstaculos:
+	jal Random
+	nop
+	# Restricciones
+		li $a1, 3		# Coordenada no permitida X
+		ble $a0, $a1, Other_Obstaculos
+		nop
+		#Autopista1
+		li $a1, 8		# Coordenada no permitida X
+		beq $v0, $a1 ,Other_Obstaculos
+		nop
+		li $a1, 9		# Coordenada no permitida X
+		beq $v0, $a1 ,Other_Obstaculos  
+		nop
+		li $a1, 10		# Coordenada no permitida X
+		beq $v0, $a1 ,Other_Obstaculos  
+		nop
+		#Autopista2
+		li $a1, 20		# Coordenada no permitida X
+		beq $v0, $a1 ,Other_Obstaculos  
+		nop
+		li $a1, 21		# Coordenada no permitida X
+		beq $v0, $a1 ,Other_Obstaculos  
+		nop
+		li $a1, 22		# Coordenada no permitida X
+		beq $v0, $a1 ,Other_Obstaculos  
+		nop
+		#Punto WIN
+		li $a1, 30		# Coordenada no permitida X
+		bge  $v0, $a1 ,Other_Obstaculos  
+		nop
+		or $a3, $zero, $v0	# a3: X
+	# Calcular Y	  
+	jal Random			# Llamada a Random
+	nop
+	or $a1, $zero, $v0		# a1: Y
+	or $a0, $zero, $a3		# a0: X
+	
+	# Calcular direccion 		
+	jal CoordsToAddress		# Llamada a CoordsToAddress
+	nop
+	
+	# Pintar direccion
+	or $a0, $zero, $a2		# a0 = color 
+	or $a1, $zero, $v0		# a1 = direccion
+	jal PaintMemory			# Llamada a PaintMemory		
+	nop	
+	
+	# Calcular cuantos obstaculos quedan
+	sub $t5, $t5, 1			# CantidadObstaculos - 1
+	bgez $t5, Other_Obstaculos
+	nop	
+	
+	# Final de llamada
+	or $ra, $zero, $v1		# Copiar Origen de llamada				
+	jr $ra				# Return 
+	nop
+###########################################################################################
+# Funcion para convertir coordenadas en direciones de memoria
+# Parametros: a0 = x, a1 = y
+#Returns: v0 = Direccion
+CoordsToAddress:
+		or $v0, $zero, $a0		# Mueve coordenada x para v0
+		lh $a0, stageWidth		# Carga the screen width into a0
+		multu $a0, $a1			# Multiplica la coordenada Y por el screen width
+		nop
+		mflo $a0			# Asigna el resultado al registro
+		addu $v0, $v0, $a0		# Suma a la coordenada X y lo almacena en laen V0
+		sll $v0, $v0, 2			# Multiplica v0 por 4 (bytes) usando una logica logical shift
+		addu $v0, $v0, $gp		# Add gp to v0 to give stage memory address
+		jr $ra				# Return
+		nop
+###########################################################################################
+# Funcion to move a given stage memory address right by a given number of tiles
+# Parametros: a0 = direccion, a1 = distancia
+#Returns: v0 = nueva direccion
+MoveRight:
+		#address + (distance*width*4)
+		or $v0, $zero, $a0		# Mueve la direccion a0 a v0
+		sll $a0, $a1, 2			# Multiplica la distancia por 4 usando un logica shift
+		add $v0, $v0, $a0		# Suma el resultado en V0
+		jr $ra				# Return
+		nop
+###########################################################################################
+# Funcion to move a given stage memory address up by a given number of tiles
+# Parametros: a0 = direccion, a1 = distancia
+#Returns: v0 = nueva direccion
+MoveUp:
+		or $v0, $zero, $a0		# Mueve la direccion a v0
+		lh $a0, stageWidth		# Carga el screen width into a0
+		multu $a0, $a1			# Multiplica la distancia por screen width
+		nop
+		mflo $a0			# Asigna el resultado al registro
+		sll $a0, $a0, 2			# Multiply v0 by 4 using a logical shift
+		subu $v0, $v0, $a0		# Add result to v0
+		jr $ra				# Return
+		nop
+###########################################################################################
+# Funcion to move a given stage memory address left by a given number of tiles
+# Parametros: a0 = direccion, a1 = distancia
+#Returns: v0 = nueva direccion
+MoveLeft:
+		or $v0, $zero, $a0		# Move address to v0
+		sll $a0, $a1, 2			# Multiply distance by 4 using a logical shift
+		subu $v0, $v0, $a0		# Subtract result from v0
+		jr $ra				# Return
+		nop
+###########################################################################################
+# Funcion to move a given stage memory address down by a given number of tiles
+# Parametros: a0 = direccion, a1 = distancia
+#Returns: v0 = nueva direccion
+MoveDown:
+		or $v0, $zero, $a0		# Move address to v0
+		lh $a0, stageWidth		# Load the screen width into a0
+		multu $a0, $a1			# Multiply distance by screen width
+		nop
+		mflo $a0			# Retrieve result from lo register
+		sll $a0, $a0, 2			# Multiply v0 by 4 using a logical shift
+		addu $v0, $v0, $a0		# Subtract result from v0
+		jr $ra				# Return
+		nop
+		
+###########################################################################################
+# Funcion para mover hacia abajo y reiniciar la posicion de los carros al llegar al limite permitido
+# Parametros: a0 = Direccion, a1 = Distancia, t5 = x 
+#Return: v0 = Direccion
+Move_Upcar:	
+		or $v1, $zero, $ra		# Guardar Origen de llamada
+		ori $a1, $zero, 1 
+		jal MoveUp			#Calcular movimiento
+		or $a3, $zero, $v0		#Guardar movimiento
+		nop
+		
+Limite_Upcar:
+		or $a0, $zero, $t5
+		li $a1, -1
+		jal CoordsToAddress		# Llamada a CoordsToAddress
+		bne $v0, $a3 , FalseUp		# Comparacion de coordenadas limites
+			j TrueUp
+			nop
+	FalseUp:
+		# Coordenada no limite		
+		or $v0, $zero, $a3	
+		or $ra, $zero, $v1		# Copiar Origen de llamada					
+		jr $ra				# Return
+		nop
+	TrueUp:
+		# Coordenada limite Reinicio
+		or $a0, $zero, $t5
+		li $a1, 31			 
+		jal CoordsToAddress		# Llamada a CoordsToAddress
+		or $ra, $zero, $v1		# Copiar Origen de llamada				
+
+		jr $ra				# Return
+		nop
+#####################################################b######################################
+# Funcion para mover hacia abajo y reiniciar la posicion de los carros al llegar al limite permitido
+# Parametros: a0 = Direccion, a1 = Distancia, t5 = x 
+#Return: v0 = Direccion
+Move_Downcar:	
+		or $v1, $zero, $ra		# Guardar Origen de llamada
+		ori $a1, $zero, 1 
+		jal MoveDown			#Calcular movimiento
+		or $a3, $zero, $v0		#Guardar movimiento
+		nop
+		
+Limite_Downcar:
+		or $a0, $zero, $t5
+		li $a1, 32
+		jal CoordsToAddress		# Llamada a CoordsToAddress
+		bne $v0, $a3 , FalseDown	# Comparacion de coordenadas limites
+			j TrueDown
+			nop
+	FalseDown:	
+		# Coordenada no limite			
+		or $v0, $zero, $a3	
+		or $ra, $zero, $v1		# Copiar Origen de llamada					
+		jr $ra				# Return
+		nop
+	TrueDown:
+		# Coordenada limite Reinicio
+		or $a0, $zero, $t5
+		li $a1, 0
+		jal CoordsToAddress		# Llamada a CoordsToAddress
+		or $ra, $zero, $v1		# Copiar Origen de llamada				
+		jr $ra				# Return
+		nop
+###########################################################################################
+# Funcion to retrieve input from the kyboard and return it as an alpha channel direction
+# Parametros: nada
+#Returns: v0 = direction
+GetDir:
+		lw $t0, 0xFFFF0004		#Cargar valor input
+		
+GetDir_right:
+		bne, $t0, 100, GetDir_up
+		nop
+		ori $v0, $zero, 0x01000000	# Right
+		j GetDir_done
+		nop
+GetDir_up:
+		bne, $t0, 119, GetDir_left
+		nop
+		ori $v0, $zero, 0x02000000	# Up
+		j GetDir_done
+		nop
+GetDir_left:
+		bne, $t0, 97, GetDir_down
+		nop
+		ori $v0, $zero, 0x03000000	# Left
+		j GetDir_done
+		nop
+GetDir_down:
+		bne, $t0, 115, GetDir_none
+		nop
+		ori $v0, $zero, 0x04000000	# Down
+		j GetDir_done
+		nop
+GetDir_none:
+						# Do nothing
+GetDir_done:
+		jr $ra				# Return
+		nop
+###########################################################################################
+# Funcion que se encarga de validar los bordes del eje Y
+# Paramentros: a2 = direcicon previa, a3 = direccion actual
+#Returns: s0 = Actualiza direccion
+Validacion_Borde:
+		or $v1, $zero, $ra		# Guardar Origen de llamada
+		li $t5, 1
+	 	li $a0, -1			# Coordenda X
+	 	li $a1, -1			# Coordanada Y
+		jal CoordsToAddress		# Calcular coordenada inicial de tope
+		nop
+	Probar_Direcc:		
+		or $a0, $zero, $v0
+		ori $a1, $zero, 1
+		jal MoveDown		
+	Probar0:
+		# Si son iguales, no mover
+		bne $a3, $v0, Probar1
+			or $s0, $zero, $a2 	# Actualizar prev-posicion del jugador
+			sub $s3, $s3, 1		# No aumentar retroceso
+			jal Prev		# Salto a prev
+			nop
+	 Probar1:
+	 	# Si no es igual, avanzar
+	 	addi $t5, $t5, 1
+		bne $t5, 34, Probar_Direcc
+			nop
+	Prev:
+		or $ra, $zero, $v1		# Guardar Origen de llamada
+		jr $ra
+		nop
+###########################################################################################
+# Funcion que se encarga de validar los bordes del eje X superior
+# Paramentros: a2 = direcicon previa, a3 = direccion actual
+#Returns: s0 = Actualiza direccion
+Validacion_BordeXS:
+		or $v1, $zero, $ra		# Guardar Origen de llamada
+		li $t5, 1			# Acumulador de movimento t5<=32
+	 	li $a0, -1			# Coordenda X
+	 	li $a1, -1			# Coordanada Y
+		jal CoordsToAddress		# Calcular coordenada inicial de tope
+		nop
+	xsProbar_Direcc:		
+		or $a0, $zero, $v0
+		ori $a1, $zero, 1
+		jal MoveRight		
+	xsProbar0:
+		# Si son iguales, no mover
+		bne $a3, $v0, xsProbar1
+			or $s0, $zero, $a2 	# Actualizar prev-posicion del jugador
+			lw $s5, ($a2)
+			jal xsPrev		# Salto a prev
+			nop
+	 xsProbar1:
+	 	# Si no es igual, avanzar
+	 	addi $t5, $t5, 1
+		bne $t5, 33, xsProbar_Direcc
+			nop
+	xsPrev:
+		or $ra, $zero, $v1		# Guardar Origen de llamada
+		jr $ra
+		nop
+###########################################################################################
+# Funcion que se encarga de validar los bordes del eje X inferior
+# Paramentros: a2 = direcicon previa, a3 = direccion actual
+#Returns: s0 = Actualiza direccion
+Validacion_BordeXI:
+		or $v1, $zero, $ra		# Guardar Origen de llamada
+		li $t5, 1			# Acumulador de movimento t5<=32
+	 	li $a0, -1			# Coordenda X
+	 	li $a1, 32			# Coordanada Y
+		jal CoordsToAddress		# Calcular coordenada inicial de tope
+		nop
+	xiProbar_Direcc:		
+		or $a0, $zero, $v0
+		ori $a1, $zero, 1
+		jal MoveRight		
+	xiProbar0:
+		# Si son iguales, no mover
+		bne $a3, $v0, xiProbar1
+			or $s0, $zero, $a2 	# Actualizar prev-posicion del jugador
+			lw $s5, ($a2)		# huella anterior
+			jal xiPrev		# Salto a fin del for
+			nop
+	 xiProbar1:
+	 	# Si no es igual, avanzar
+	 	addi $t5, $t5, 1
+		bne $t5, 33, xiProbar_Direcc
+		nop
+	xiPrev:
+		or $ra, $zero, $v1		# Guardar Origen de llamada
+		jr $ra
+		nop
+###########################################################################################
+# Funcion que se encarga de validar los bordes del eje Y
+# Paramentros: a2 = x
+#Returns: s0 = Actualiza direccion
+Pintar_Calle:
+		or $v1, $zero, $ra		# Guardar Origen de llamada
+		li $t5, 0
+	 	or $a0, $zero, $a2		# Coordenda X
+	 	li $a1, -1			# Coordanada Y	
+		jal CoordsToAddress		# Calcular coordenada inicial de tope
+		nop
+	Volver_Pintar:				# INICIO-BUCLE
+	# Parametros: a0 = color, a1 = direccion
+		# Pintar
+		
+			or $a0, $zero, $s6
+			or $a1, $zero, $v0
+			jal PaintMemory	
+		nop
+		Franjas:
+		# Pintar-Franjas
+			beq $t5, 2, PFranjas
+			beq $t5, 3, PFranjas	
+			beq $t5, 9, PFranjas
+			beq $t5, 10, PFranjas
+			beq $t5, 16, PFranjas
+			beq $t5, 17, PFranjas
+			beq $t5, 23, PFranjas
+			beq $t5, 24, PFranjas
+			beq $t5, 30, PFranjas
+			beq $t5, 31, PFranjas
+		nop	
+		# Avanzar-Brocha
+		Aumentar:
+			or $a0, $zero, $v0
+			ori $a1, $zero, 1
+			jal MoveDown	
+	 		addi $t5, $t5, 1
+			bne $t5, 33, Volver_Pintar# FIN-BUCLE
+		nop
+	
+		or $ra, $zero, $v1		# Guardar Origen de llamada
+		jr $ra
+		nop
+	PFranjas:
+	# Franjas
+	or $a1, $zero, $v0
+	or $a0, $zero, $s4
+	jal PaintMemory
+	j Aumentar
+	nop
+###########################################################################################
